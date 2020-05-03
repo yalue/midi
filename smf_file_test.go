@@ -88,4 +88,27 @@ func TestParseSMFFile(t *testing.T) {
 				track.Messages[i].String())
 		}
 	}
+	// This simple file should match exactly when we re-write it, since it uses
+	// running status and doesn't do anything odd.
+	var outputFile bytes.Buffer
+	e = smfFile.WriteToFile(&outputFile)
+	if e != nil {
+		t.Logf("Failed writing SMF file: %s\n", e)
+		t.FailNow()
+	}
+	outputData := outputFile.Bytes()
+	if len(outputData) != len(smfData) {
+		t.Logf("Got incorrect output file length: expected %d, got %d\n",
+			len(smfData), len(outputData))
+		t.FailNow()
+	}
+	for i := range outputData {
+		if outputData[i] != smfData[i] {
+			t.Logf("Written data doesn't match original file at byte %d: "+
+				"got 0x%02x, expected 0x%02x\n", i, outputData[i], smfData[i])
+			t.Fail()
+			break
+		}
+	}
+	t.Logf("The written output file matches the input SMF data!\n")
 }

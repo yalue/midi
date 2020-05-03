@@ -209,8 +209,8 @@ func ParseSMFFile(file io.Reader) (*SMFFile, error) {
 	return &toReturn, nil
 }
 
-// Writes the given SMF file to an output file. May modify the Format and
-// TrackCount fields of the header to match the number of tracks in the slice.
+// Writes the given SMF file to an output file. Uses running status when
+// writing the output.
 func (f *SMFFile) WriteToFile(file io.Writer) error {
 	var header SMFHeader
 	header.ChunkType = [4]byte{'M', 'T', 'h', 'd'}
