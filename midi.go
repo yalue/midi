@@ -548,6 +548,18 @@ func (v *NoteOffEvent) SMFData(runningStatus *byte) ([]byte, error) {
 	return []byte{status, byte(v.Note), v.Velocity}, nil
 }
 
+func (v *NoteOffEvent) GetChannel() uint8 {
+	return v.Channel
+}
+
+func (v *NoteOffEvent) SetChannel(c uint8) error {
+	if c > 0xf {
+		return fmt.Errorf("Bad channel number: %d", c)
+	}
+	v.Channel = c
+	return nil
+}
+
 func parseNoteOffEvent(r io.Reader, firstByte, channel uint8) (MIDIMessage,
 	error) {
 	var n byte
@@ -610,6 +622,18 @@ func (v *NoteOnEvent) SMFData(runningStatus *byte) ([]byte, error) {
 	return []byte{status, byte(v.Note), v.Velocity}, nil
 }
 
+func (v *NoteOnEvent) GetChannel() uint8 {
+	return v.Channel
+}
+
+func (v *NoteOnEvent) SetChannel(c uint8) error {
+	if c > 0xf {
+		return fmt.Errorf("Bad channel number: %d", c)
+	}
+	v.Channel = c
+	return nil
+}
+
 func parseNoteOnEvent(r io.Reader, firstByte, channel uint8) (MIDIMessage,
 	error) {
 	// This, and basically every other channel-event parsing function works in
@@ -670,6 +694,18 @@ func (v *AftertouchEvent) SMFData(runningStatus *byte) ([]byte, error) {
 	}
 	*runningStatus = status
 	return []byte{status, byte(v.Note), v.Pressure}, nil
+}
+
+func (v *AftertouchEvent) GetChannel() uint8 {
+	return v.Channel
+}
+
+func (v *AftertouchEvent) SetChannel(c uint8) error {
+	if c > 0xf {
+		return fmt.Errorf("Bad channel number: %d", c)
+	}
+	v.Channel = c
+	return nil
 }
 
 func parseAftertouchEvent(r io.Reader, firstByte, channel uint8) (MIDIMessage,
@@ -760,6 +796,18 @@ func (v *ControlChangeEvent) SMFData(runningStatus *byte) ([]byte, error) {
 	return []byte{status, v.ControllerNumber, v.Value}, nil
 }
 
+func (v *ControlChangeEvent) GetChannel() uint8 {
+	return v.Channel
+}
+
+func (v *ControlChangeEvent) SetChannel(c uint8) error {
+	if c > 0xf {
+		return fmt.Errorf("Bad channel number: %d", c)
+	}
+	v.Channel = c
+	return nil
+}
+
 func parseControlChangeEvent(r io.Reader, firstByte, channel uint8) (
 	MIDIMessage, error) {
 	var c uint8
@@ -817,6 +865,18 @@ func (v *ProgramChangeEvent) SMFData(runningStatus *byte) ([]byte, error) {
 	return []byte{status, v.Value}, nil
 }
 
+func (v *ProgramChangeEvent) GetChannel() uint8 {
+	return v.Channel
+}
+
+func (v *ProgramChangeEvent) SetChannel(c uint8) error {
+	if c > 0xf {
+		return fmt.Errorf("Bad channel number: %d", c)
+	}
+	v.Channel = c
+	return nil
+}
+
 func parseProgramChangeEvent(r io.Reader, firstByte, channel uint8) (
 	MIDIMessage, error) {
 	var v uint8
@@ -863,6 +923,18 @@ func (v *ChannelPressureEvent) SMFData(runningStatus *byte) ([]byte, error) {
 	}
 	*runningStatus = status
 	return []byte{status, v.Value}, nil
+}
+
+func (v *ChannelPressureEvent) GetChannel() uint8 {
+	return v.Channel
+}
+
+func (v *ChannelPressureEvent) SetChannel(c uint8) error {
+	if c > 0xf {
+		return fmt.Errorf("Bad channel number: %d", c)
+	}
+	v.Channel = c
+	return nil
 }
 
 func parseChannelPressureEvent(r io.Reader, firstByte, channel uint8) (
@@ -912,6 +984,18 @@ func (v *PitchBendEvent) SMFData(runningStatus *byte) ([]byte, error) {
 	}
 	*runningStatus = status
 	return []byte{status, lowBits, highBits}, nil
+}
+
+func (v *PitchBendEvent) GetChannel() uint8 {
+	return v.Channel
+}
+
+func (v *PitchBendEvent) SetChannel(c uint8) error {
+	if c > 0xf {
+		return fmt.Errorf("Bad channel number: %d", c)
+	}
+	v.Channel = c
+	return nil
 }
 
 func parsePitchBendEvent(r io.Reader, firstByte, channel uint8) (MIDIMessage,

@@ -9,6 +9,7 @@ import (
 	"github.com/yalue/midi"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -108,11 +109,106 @@ func insertNewEvent(hexData string, track, position int,
 	return nil
 }
 
+// Converts the given string to a number, and verifies that the number is
+// between 0 and 15 (inclusive).
+func stringToChannelNumber(s string) (uint8, error) {
+	v, e := strconv.Atoi(s)
+	if e != nil {
+		return 0, fmt.Errorf("Couldn't convert %s to number: %s", s, e)
+	}
+	if (v < 0) || (v > 15) {
+		return 0, fmt.Errorf("Invalid channel number: %d. "+
+			"Channel numbers start at 0 in this tool (for now).", v)
+	}
+	return uint8(v), nil
+}
+
+// We'll use this interface to identify and modify events that are associated
+// with a channel.
+type ChannelMessage interface {
+	midi.MIDIMessage
+	GetChannel() uint8
+	SetChannel(c uint8) error
+}
+
+// Modifies the SMFFile struct to reassign every event in one channel to happen
+// in a different channel instead. I used this to fix a broken MIDI file that
+// incorrectly put some non-percussion in channel 10. We'll use channel numbers
+// starting from 0 here (probably should make that consistent later).
+func reassignChannels(args string, smf *midi.SMFFile) error {
+	channelStrings := strings.Split(args, ",")
+	if len(channelStrings) != 2 {
+		return fmt.Errorf("%s doesn't contain two channels numbers", args)
+	}
+	originalChannel, e := stringToChannelNumber(channelStrings[0])
+	if e != nil {
+		return fmt.Errorf("Bad original channel number: %s", e)
+	}
+	newChannel, e := stringToChannelNumber(channelStrings[1])
+	if e != nil {
+		return fmt.Errorf("Bad new channel number: %s", e)
+	}
+	totalCount := 0
+	modifiedCount := 0
+	for _, t := range smf.Tracks {
+		for _, m := range t.Messages {
+			totalCount++
+			channelMessage, ok := m.(ChannelMessage)
+			if !ok {
+				continue
+			}
+			if channelMessage.GetChannel() != originalChannel {
+				continue
+			}
+			// We've found a channel message that is associated with the old
+			// channel, so reassign it to the new channel.
+			e = channelMessage.SetChannel(newChannel)
+			if e != nil {
+				return fmt.Errorf("Failed setting channel on %s: %s", m, e)
+			}
+			modifiedCount++
+		}
+	}
+	fmt.Printf("Reassigned %d/%d events from channel %d to %d.\n", modifiedCount,
+		totalCount, originalChannel, newChannel)
+	return nil
+}
+
+// Scales the velocity of every event in the indicated track.
+func rescaleVelocity(scale float64, track int, smf *midi.SMFFile) error {
+	if (scale < 0) || (scale >= 1) {
+		return fmt.Errorf("Velocity scale must be between 0 and 1. Got %f",
+			scale)
+	}
+	t, e := getNumberedTrack(track, smf)
+	if e != nil {
+		return e
+	}
+	modifiedCount := 0
+	for _, m := range t.Messages {
+		noteOn, ok := m.(*midi.NoteOnEvent)
+		if !ok {
+			continue
+		}
+		newVelocity := uint8(float64(noteOn.Velocity) * scale)
+		if newVelocity > 127 {
+			newVelocity = 127
+		}
+		noteOn.Velocity = newVelocity
+		modifiedCount++
+	}
+	fmt.Printf("Updated the velocity of %d note-on events in track %d\n",
+		modifiedCount, track)
+	return nil
+}
+
 func run() int {
 	var filename, outputFilename string
 	var dumpEvents bool
 	var track, position int
+	var reassignChannel string
 	var newEventHex string
+	var scaleVelocity float64
 	flag.StringVar(&filename, "input_file", "", "The .mid file to open.")
 	flag.StringVar(&outputFilename, "output_file", "", "The name of the .mid "+
 		"file to create.")
@@ -126,6 +222,14 @@ func run() int {
 		"bytes here, containing a delta time followed by a MIDI message to "+
 		"insert at the given position. Must be a valid SMF event, and not "+
 		"use running status.")
+	flag.StringVar(&reassignChannel, "reassign_channel", "", "If provided, "+
+		"this must be a comma-separated list of two integers indicating "+
+		"channel numbers. Any events in the channel indicated by the first "+
+		"number will be modified to happen in the second channel's number "+
+		"instead. Uses channel numbers starting from 0.")
+	flag.Float64Var(&scaleVelocity, "scale_velocity", -1, "If provided, "+
+		"this must be a value between 0.0 and 1.0. The velocity of every "+
+		"note-on event in the selected track will be scaled by this amount.")
 	flag.Parse()
 	if filename == "" {
 		fmt.Printf("Invalid arguments. Run with -help for more information.\n")
@@ -148,14 +252,26 @@ func run() int {
 
 	// First, insert a new message if one was specified.
 	if newEventHex != "" {
-		if outputFilename == "" {
-			fmt.Printf("Error: can't insert a new event, an output file " +
-				"name must be provided.\n")
-			return 1
-		}
 		e = insertNewEvent(newEventHex, track, position, smf)
 		if e != nil {
 			fmt.Printf("Failed inserting new event: %s\n", e)
+			return 1
+		}
+	}
+
+	// Next, reassign channel numbers if requested.
+	if reassignChannel != "" {
+		e = reassignChannels(reassignChannel, smf)
+		if e != nil {
+			fmt.Printf("Failed reassigning channel numbers: %s\n", e)
+			return 1
+		}
+	}
+
+	if (scaleVelocity >= 0) && (scaleVelocity <= 1.0) {
+		e = rescaleVelocity(scaleVelocity, track, smf)
+		if e != nil {
+			fmt.Printf("Failed scaling track velocity: %s\n", e)
 			return 1
 		}
 	}
