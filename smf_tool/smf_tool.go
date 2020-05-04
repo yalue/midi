@@ -202,6 +202,101 @@ func rescaleVelocity(scale float64, track int, smf *midi.SMFFile) error {
 	return nil
 }
 
+// Looks through the SMF file and computes the longest-running track, in ticks.
+// Returns the number of ticks in this track.
+func getLongestTrackTicks(smf *midi.SMFFile) uint32 {
+	toReturn := uint32(0)
+	for _, t := range smf.Tracks {
+		current := uint32(0)
+		for _, d := range t.TimeDeltas {
+			current += d
+		}
+		if current > toReturn {
+			toReturn = current
+		}
+	}
+	return toReturn
+}
+
+// Adds an additional track with some more percussion to the SMF file. Attempts
+// to make the new track's tempo match the tempo specified in the file header.
+func addExtraBeats(smf *midi.SMFFile) error {
+	ticksToGenerate := getLongestTrackTicks(smf)
+	// We'll make this twice as fast as the MIDI itself.
+	ticksPerBeat := uint32(smf.Division.TicksPerQuarterNote()) / 2
+	if ticksPerBeat == 0 {
+		return fmt.Errorf("Unsupported: The file doesn't specify ticks per " +
+			"beat")
+	}
+	beatsToGenerate := ticksToGenerate / ticksPerBeat
+	// For each beat we'll generate 1 note on event and one note-off event,
+	// plus one end-of-track event.
+	eventCount := beatsToGenerate*2 + 1
+	messages := make([]midi.MIDIMessage, 0, eventCount)
+	timeDeltas := make([]uint32, 0, eventCount)
+	// This specifies the pattern of notes to play, apart from delta times.
+	onEvents := []midi.MIDIMessage{
+		&midi.NoteOnEvent{
+			// We'll rely on channel 9 being reserved for percussion, as is the
+			// case for general MIDI.
+			Channel: 9,
+			// This is the bass drum "note" for general MIDI percussion
+			Note: 36,
+			// Make this pretty loud
+			Velocity: 120,
+		},
+		&midi.NoteOnEvent{
+			Channel: 9,
+			// Closed hi-hat
+			Note: 42,
+			// Slightly quieter
+			Velocity: 80,
+		},
+		&midi.NoteOnEvent{
+			Channel: 9,
+			// Electric snare
+			Note:     40,
+			Velocity: 100,
+		},
+		&midi.NoteOnEvent{
+			Channel:  9,
+			Note:     42,
+			Velocity: 80,
+		},
+	}
+	offEvents := make([]midi.MIDIMessage, len(onEvents))
+	// We'll use note-on events with velocity 0 for the note-off events.
+	for i := range onEvents {
+		onEvent := onEvents[i].(*midi.NoteOnEvent)
+		offEvent := *onEvent
+		offEvent.Velocity = 0
+		offEvents[i] = &offEvent
+	}
+
+	// Populate the new track's times and events slices.
+	for i := 0; i < int(beatsToGenerate); i++ {
+		// Note-on events will always have a time delta of 0--they'll happen at
+		// the same time as the preceding note-off event.
+		timeDeltas = append(timeDeltas, 0)
+		messages = append(messages, onEvents[i%len(onEvents)])
+		timeDeltas = append(timeDeltas, ticksPerBeat)
+		messages = append(messages, offEvents[i%len(offEvents)])
+	}
+	// Don't forget the end-of-track messages
+	timeDeltas = append(timeDeltas, 0)
+	messages = append(messages, midi.EndOfTrackMetaEvent(0))
+
+	// Finally, create the new track and append it to the SMF's tracks.
+	newTrack := &midi.SMFTrack{
+		Messages:   messages,
+		TimeDeltas: timeDeltas,
+	}
+	smf.Tracks = append(smf.Tracks, newTrack)
+	fmt.Printf("Appended track %d, with %d events.\n", len(smf.Tracks),
+		len(messages))
+	return nil
+}
+
 func run() int {
 	var filename, outputFilename string
 	var dumpEvents bool
@@ -209,6 +304,7 @@ func run() int {
 	var reassignChannel string
 	var newEventHex string
 	var scaleVelocity float64
+	var bootsAndCats bool
 	flag.StringVar(&filename, "input_file", "", "The .mid file to open.")
 	flag.StringVar(&outputFilename, "output_file", "", "The name of the .mid "+
 		"file to create.")
@@ -230,6 +326,8 @@ func run() int {
 	flag.Float64Var(&scaleVelocity, "scale_velocity", -1, "If provided, "+
 		"this must be a value between 0.0 and 1.0. The velocity of every "+
 		"note-on event in the selected track will be scaled by this amount.")
+	flag.BoolVar(&bootsAndCats, "boots_and_cats", false, "If set, this adds "+
+		"an extra track to the MIDI file, for added rhythmic emphasis!")
 	flag.Parse()
 	if filename == "" {
 		fmt.Printf("Invalid arguments. Run with -help for more information.\n")
@@ -272,6 +370,14 @@ func run() int {
 		e = rescaleVelocity(scaleVelocity, track, smf)
 		if e != nil {
 			fmt.Printf("Failed scaling track velocity: %s\n", e)
+			return 1
+		}
+	}
+
+	if bootsAndCats {
+		e = addExtraBeats(smf)
+		if e != nil {
+			fmt.Printf("Failed adding extra track: %s\n", e)
 			return 1
 		}
 	}
