@@ -16,7 +16,7 @@ The tool also supports inserting events into existing tracks:
 ```
 ./smf_tool -input_file <my_file.mid> -output_file <new_file.mid> \
     -track 2 -position 2 \
-    -new_event "00 C0 0F"
+    -new_event "00 C0 0E"
 ```
 
 The above command uses the following flags:
@@ -31,7 +31,7 @@ The above command uses the following flags:
    the underlying `github.com/yalue/midi` library numbers then starting from 0.
  - `-position 2`: Insert the new event after position 2 in the track. (So,
    after insertion, the new event will be at index 2.)
- - `-new_event "00 C0 0e"`: The `-new_event` flag takes a string of hex data,
+ - `-new_event "00 C0 0E"`: The `-new_event` flag takes a string of hex data,
    which will be parsed as a MIDI event. The data can not use running status
    and must include a delta-time.  In this case, the new event has a time
    delta of 0 (the first `00`), specifies a "program change event" to channel 0
