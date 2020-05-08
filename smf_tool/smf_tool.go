@@ -202,6 +202,45 @@ func rescaleVelocity(scale float64, track int, smf *midi.SMFFile) error {
 	return nil
 }
 
+// Sets the time delta of the event at the given track and position.
+func adjustTimeDelta(newTimeDelta, track, position int,
+	smf *midi.SMFFile) error {
+	if newTimeDelta > 0x0fffffff {
+		return fmt.Errorf("The time delta of %d exceeds the limit of %d",
+			newTimeDelta, 0x0fffffff)
+	}
+	t, e := getNumberedTrack(track, smf)
+	if e != nil {
+		return e
+	}
+	index := position - 1
+	if (index < 0) || (index >= len(t.TimeDeltas)) {
+		return fmt.Errorf("Invalid track event number for delta-time "+
+			"adjustment: %d", position)
+	}
+	t.TimeDeltas[index] = uint32(newTimeDelta)
+	return nil
+}
+
+func deleteSMFEvent(track, position int, smf *midi.SMFFile) error {
+	t, e := getNumberedTrack(track, smf)
+	if e != nil {
+		return e
+	}
+	index := position - 1
+	if (index < 0) || (index >= len(t.Messages)) {
+		return fmt.Errorf("Invalid event number for event to delete: %d",
+			position)
+	}
+	// Shift all of the events past the deleted events up one position, and
+	// shorten the slices by one.
+	copy(t.TimeDeltas[index:], t.TimeDeltas[index+1:])
+	t.TimeDeltas = t.TimeDeltas[0 : len(t.TimeDeltas)-1]
+	copy(t.Messages[index:], t.Messages[index+1:])
+	t.Messages = t.Messages[0 : len(t.Messages)-1]
+	return nil
+}
+
 // Looks through the SMF file and computes the longest-running track, in ticks.
 // Returns the number of ticks in this track.
 func getLongestTrackTicks(smf *midi.SMFFile) uint32 {
@@ -303,6 +342,8 @@ func run() int {
 	var track, position int
 	var reassignChannel string
 	var newEventHex string
+	var deleteEvent bool
+	var newTimeDelta int
 	var scaleVelocity float64
 	var bootsAndCats bool
 	flag.StringVar(&filename, "input_file", "", "The .mid file to open.")
@@ -314,6 +355,9 @@ func run() int {
 	flag.IntVar(&position, "position", -1, "The position in the track to "+
 		"modify. If inserting a message, it will be inserted after this "+
 		"position. 0 = insert at the first position.")
+	flag.IntVar(&newTimeDelta, "new_time_delta", -1, "Set the time delta of "+
+		"the event specified by -position and -track to this value.  This "+
+		"will be applied before -new_event.")
 	flag.StringVar(&newEventHex, "new_event", "", "Provide a hex string of "+
 		"bytes here, containing a delta time followed by a MIDI message to "+
 		"insert at the given position. Must be a valid SMF event, and not "+
@@ -328,6 +372,9 @@ func run() int {
 		"note-on event in the selected track will be scaled by this amount.")
 	flag.BoolVar(&bootsAndCats, "boots_and_cats", false, "If set, this adds "+
 		"an extra track to the MIDI file, for added rhythmic emphasis!")
+	flag.BoolVar(&deleteEvent, "delete_event", false, "If set, delete the "+
+		"event at the specified track and position. No other modifications"+
+		"can be made if this is specified.")
 	flag.Parse()
 	if filename == "" {
 		fmt.Printf("Invalid arguments. Run with -help for more information.\n")
@@ -348,8 +395,32 @@ func run() int {
 	fmt.Printf("Parsed %s OK. Contains %d tracks. Time division: %s.\n",
 		filename, len(smf.Tracks), smf.Division)
 
-	// First, insert a new message if one was specified.
+	if deleteEvent {
+		e = deleteSMFEvent(track, position, smf)
+		if e != nil {
+			fmt.Printf("Failed deleting event: %s\n", e)
+			return 1
+		}
+	}
+
+	// Adjust time deltas first, if requested.
+	if newTimeDelta >= 0 {
+		if deleteEvent {
+			fmt.Printf("Can't adjust time delta after deleting an event.\n")
+			return 1
+		}
+		e = adjustTimeDelta(newTimeDelta, track, position, smf)
+		if e != nil {
+			fmt.Printf("Failed adjusting time delta: %s\n", e)
+			return 1
+		}
+	}
+
+	// Insert a new message if one was specified.
 	if newEventHex != "" {
+		if deleteEvent {
+			fmt.Printf("Can't add new event after deleting an event.\n")
+		}
 		e = insertNewEvent(newEventHex, track, position, smf)
 		if e != nil {
 			fmt.Printf("Failed inserting new event: %s\n", e)
