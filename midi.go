@@ -127,6 +127,10 @@ func parseSystemExclusiveMessage(r io.Reader, firstByte byte) (MIDIMessage,
 	if e != nil {
 		return nil, fmt.Errorf("Couldn't read SysEx message length: %s", e)
 	}
+	if length == 0 {
+		// TODO: Should a 0-length SysEx message actually be an error?
+		return nil, fmt.Errorf("Got a SysEx message with 0 length")
+	}
 	data := make([]byte, length)
 	_, e = r.Read(data)
 	if e != nil {

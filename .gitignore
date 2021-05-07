@@ -1,4 +1,6 @@
 smf_tool/smf_tool
 smf_tool/smf_tool.exe
+instrument_stats/instrument_stats
+instrument_stats/instrument_stats.exe
 *.mid
 

@@ -336,9 +336,19 @@ func addExtraBeats(smf *midi.SMFFile) error {
 	return nil
 }
 
+// Prints a bunch of extra per-track info to stdout.
+func printExtraInfo(smf *midi.SMFFile) error {
+	for i, t := range smf.Tracks {
+		fmt.Printf("  Track %d/%d: %d messages\n", i+1, len(smf.Tracks),
+			len(t.Messages))
+	}
+	return nil
+}
+
 func run() int {
 	var filename, outputFilename string
 	var dumpEvents bool
+	var extraInfo bool
 	var track, position int
 	var reassignChannel string
 	var newEventHex string
@@ -351,6 +361,8 @@ func run() int {
 		"file to create.")
 	flag.BoolVar(&dumpEvents, "dump_events", false, "If set, print a list of "+
 		"all events in the file to stdout.")
+	flag.BoolVar(&extraInfo, "extra_info", false, "If set, print some extra "+
+		"stats about the file to stdout.")
 	flag.IntVar(&track, "track", -1, "The track to modify.")
 	flag.IntVar(&position, "position", -1, "The position in the track to "+
 		"modify. If inserting a message, it will be inserted after this "+
@@ -394,6 +406,14 @@ func run() int {
 	}
 	fmt.Printf("Parsed %s OK. Contains %d tracks. Time division: %s.\n",
 		filename, len(smf.Tracks), smf.Division)
+
+	if extraInfo {
+		e = printExtraInfo(smf)
+		if e != nil {
+			fmt.Printf("Failed getting extra info: %s\n", e)
+			return 1
+		}
+	}
 
 	if deleteEvent {
 		e = deleteSMFEvent(track, position, smf)
